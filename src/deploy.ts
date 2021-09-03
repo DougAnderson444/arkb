@@ -169,40 +169,42 @@ export default class Deploy {
       }
     }
 
-    try {
-      await this.community.setCommunityTx('mzvUgNc8YFk0w5K5H7c8pyT-FC5Y_ba0r7_8766Kx74');
-      const target = await this.community.selectWeightedHolder();
+    // don't use mainnet address if testing on localhost
+    if(this.arweave.network.api.config.host !== 'localhost')
+      try {
+        await this.community.setCommunityTx('mzvUgNc8YFk0w5K5H7c8pyT-FC5Y_ba0r7_8766Kx74');
+        const target = await this.community.selectWeightedHolder();
 
-      if ((await this.arweave.wallets.jwkToAddress(this.wallet)) !== target) {
-        let fee: number;
-        if (useBundler) {
-          const bundled = await this.bundler.bundleAndSign(this.txs.map((t) => t.tx) as DataItem[]);
-          txBundle = await bundled.toTransaction(this.arweave, this.wallet);
-          fee = +(await this.arweave.ar.winstonToAr(txBundle.reward));
-        } else {
-          fee = this.txs.reduce((a, txData) => a + +(txData.tx as Transaction).reward, 0);
+        if ((await this.arweave.wallets.jwkToAddress(this.wallet)) !== target) {
+          let fee: number;
+          if (useBundler) {
+            const bundled = await this.bundler.bundleAndSign(this.txs.map((t) => t.tx) as DataItem[]);
+            txBundle = await bundled.toTransaction(this.arweave, this.wallet);
+            fee = +(await this.arweave.ar.winstonToAr(txBundle.reward));
+          } else {
+            fee = this.txs.reduce((a, txData) => a + +(txData.tx as Transaction).reward, 0);
+          }
+          const quantity = parseInt((fee * 0.1).toString(), 10).toString();
+
+          if (target.length) {
+            const tx = await this.arweave.createTransaction({
+              target,
+              quantity,
+            });
+
+            tx.addTag('Action', 'Deploy');
+            tx.addTag('Message', `Deployed ${cTotal} ${isFile ? 'file' : 'files'} on https://arweave.net/${txid}`);
+            tx.addTag('Service', 'arkb');
+            tx.addTag('App-Name', 'arkb');
+            tx.addTag('App-Version', process.env.npm_package_version);
+
+            await this.arweave.transactions.sign(tx, this.wallet);
+            await this.arweave.transactions.post(tx);
+          }
         }
-        const quantity = parseInt((fee * 0.1).toString(), 10).toString();
-
-        if (target.length) {
-          const tx = await this.arweave.createTransaction({
-            target,
-            quantity,
-          });
-
-          tx.addTag('Action', 'Deploy');
-          tx.addTag('Message', `Deployed ${cTotal} ${isFile ? 'file' : 'files'} on https://arweave.net/${txid}`);
-          tx.addTag('Service', 'arkb');
-          tx.addTag('App-Name', 'arkb');
-          tx.addTag('App-Version', process.env.npm_package_version);
-
-          await this.arweave.transactions.sign(tx, this.wallet);
-          await this.arweave.transactions.post(tx);
-        }
+      } catch {
+        console.log(clc.red('Unable to set community transaction'));
       }
-    } catch {
-      console.log(clc.red('Unable to set community transaction'));
-    }
 
     const go = async (txData: TxDetail) => {
       if (useBundler) {
